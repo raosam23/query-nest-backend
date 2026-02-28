@@ -1,6 +1,24 @@
-class Main:
-    def __init__(self):
-        print('Constructor')
+from app.core.config import settings
+from datetime import datetime, timedelta, timezone
+from jose import jwt, JWTError
+from passlib.context import CryptContext
 
-    def say_hey(self, name: str) -> None:
-        print(f'Hey {name}! How are you doing today?')
+pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+def create_access_token(user_id: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=int(settings.JWT_EXPIRE_MINUTES))
+    to_encode = {'sub': user_id, 'exp': expire}
+    return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+def decode_token(token: str) -> str:
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        return payload.get('sub')
+    except JWTError:
+        return None
