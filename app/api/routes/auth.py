@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_session
-from app.services.auth_service import register_user, login_user
+from app.services.auth_service import login_user, register_user
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 class AuthRequest(BaseModel):
     email: str = Field(description='User email')

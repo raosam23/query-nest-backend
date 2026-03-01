@@ -19,7 +19,7 @@ def create_access_token(user_id: str) -> str:
     to_encode = {'sub': user_id, 'exp': expire}
     return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
-def decode_token(token: str) -> str:
+def decode_access_token(token: str) -> str:
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         return payload.get('sub')
