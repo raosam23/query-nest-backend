@@ -3,6 +3,7 @@ from enum import Enum
 from datetime import datetime, timezone
 from sqlmodel import Field, Relationship, SQLModel
 from typing import List, Optional
+from sqlalchemy import Column, DateTime
 
 
 class SessionStatus(str, Enum):
@@ -22,7 +23,7 @@ class User(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     email: str = Field(unique=True, index=True)
     password_hash: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True)))
     sessions: List['ResearchSession'] = Relationship(back_populates='user')
 
 class ResearchSession(SQLModel, table=True):
@@ -33,7 +34,7 @@ class ResearchSession(SQLModel, table=True):
     query: str
     status: SessionStatus = SessionStatus.PENDING
     final_report: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True)))
     completed_at: Optional[datetime] = None
     user: User = Relationship(back_populates='sessions')
     agent_logs: List['AgentLog'] = Relationship(back_populates='session')
@@ -47,7 +48,7 @@ class AgentLog(SQLModel, table=True):
     agent_name: str
     status: AgentStatus = AgentStatus.RUNNING
     output: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True)))
     completed_at: Optional[datetime] = None
     session: ResearchSession = Relationship(back_populates='agent_logs')
 
