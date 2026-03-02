@@ -1,13 +1,13 @@
 import uuid
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.database import get_session
 from app.api.dependencies import get_current_user
+from app.db.database import get_session
+from app.db.models import User, SessionStatus
 from app.services.research_service import create_research_session, get_research_session
-from app.db.models import User, ResearchSession, SessionStatus
-from pydantic import BaseModel, Field
-from typing import Optional
 from datetime import datetime
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 
 class ResearchRequest(BaseModel):
     query: str = Field(description='The query given by the user that has to be forwarded to the agent')
