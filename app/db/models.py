@@ -23,7 +23,7 @@ class User(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     email: str = Field(unique=True, index=True)
     password_hash: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True)))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), index=True))
     sessions: List['ResearchSession'] = Relationship(back_populates='user')
 
 class ResearchSession(SQLModel, table=True):
@@ -34,7 +34,7 @@ class ResearchSession(SQLModel, table=True):
     query: str
     status: SessionStatus = SessionStatus.PENDING
     final_report: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True)))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), index=True))
     completed_at: Optional[datetime] = None
     user: User = Relationship(back_populates='sessions')
     agent_logs: List['AgentLog'] = Relationship(back_populates='session')
