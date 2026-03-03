@@ -1,4 +1,5 @@
-# TODO:Langgraph side of things will be done later
+from app.agents.state import ResearchState
+from app.graph.builder import build_graph
 from app.db.models import ResearchSession, SessionStatus, User
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +7,19 @@ from sqlmodel import select
 
 async def create_research_session(query: str, current_user: User, session: AsyncSession) -> ResearchSession:
     research_session = ResearchSession(user_id=current_user.id, query=query, status=SessionStatus.PENDING)
+    graph = build_graph()
+    init_state: ResearchState = {
+        'query': query,
+        'search_results': [],
+        'key_claims': [],
+        'fact_check_report': {},
+        'final_report': '',
+        'next': '',
+        'session_id': str(research_session.id)
+    }
+    graph_result = await graph.ainvoke(init_state)
+    research_session.status = SessionStatus.DONE
+    research_session.final_report = graph_result.get('final_report')
     session.add(research_session)
     await session.commit()
     await session.refresh(research_session)

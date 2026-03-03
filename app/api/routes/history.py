@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.database import get_session
 from app.api.dependencies import get_current_user
-from app.services.history_service import get_all_sessions, delete_session
-from app.db.models import User
 from app.api.routes.research import ResearchResponse
+from app.db.database import get_session
+from app.db.models import User
+from app.services.history_service import get_all_sessions, delete_session
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
 class DeleteResponse(BaseModel):
