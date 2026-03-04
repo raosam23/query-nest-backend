@@ -1,6 +1,5 @@
 from app.agents.llm import llm
 from app.agents.state import ResearchState
-from langchain_openai import ChatOpenAI
 
 async def summarizer_agent(state: ResearchState) -> dict:
     search_result = state['search_results']
