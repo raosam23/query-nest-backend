@@ -2,6 +2,16 @@ from app.agents.llm import llm
 from app.agents.state import ResearchState
 
 async def writer_agent(state: ResearchState) -> dict:
+    '''
+    Writer Agent Node
+
+    - Takes the query, key claims and the fact check report.
+    - Passes this information to the llm, which is then going to generate a structured report
+    - Returns the report
+
+    Input state: query, key_claims, fact_check_report
+    Output state: final_report
+    '''
     query = state['query']
     key_claims = state['key_claims']
     fact_check_report = state['fact_check_report']

@@ -2,6 +2,16 @@ from app.agents.llm import llm
 from app.agents.state import ResearchState
 
 async def summarizer_agent(state: ResearchState) -> dict:
+    '''
+    Summarizer Agent Node
+
+    - Takes the search_results from the state
+    - passes the info to the llm which extracts key claims as a list
+    - And returns the list of key claims
+
+    Input state: search_results
+    Output state: key_claims
+    '''
     search_result = state['search_results']
     if not search_result:
         return {'key_claims': []}

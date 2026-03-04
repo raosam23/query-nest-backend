@@ -2,6 +2,16 @@ from app.agents.llm import llm
 from app.agents.state import ResearchState
 
 async def fact_checker_agent(state: ResearchState) -> dict:
+    '''
+    Fact Checker Node
+
+    - Takes the key claims from the state
+    - takes the key claims given, passes to the llm and the llm cross-references them, identifies any contradictions and rate each claims
+    - returns the report as a dict
+
+    Input state: key_claims
+    Output state: fact_check_report 
+    '''
     key_claims = state['key_claims']
     if not key_claims:
         return {'fact_check_report': {'report': 'no claims to check'}}

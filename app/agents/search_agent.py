@@ -6,7 +6,15 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 search_tool = TavilySearchResults(max_results=5, tavily_api_key=settings.TAVILY_API_KEY)
 
 async def search_agent(state: ResearchState) -> dict:
-    '''Gets the query from the state and searches the web and returns a dict containing the results'''
+    '''
+    Search Agent Node
+    - Takes the user query from the state
+    - Searches the web using Tavily API
+    - Returns a list of relevant articles and sources
+
+    Input state: query
+    Output state: search_results
+    '''
     user_query = state['query']
     if not user_query:
         return {'search_results': []}
