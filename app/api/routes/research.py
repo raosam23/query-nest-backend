@@ -2,9 +2,9 @@ import uuid
 from app.api.dependencies import get_current_user
 from app.db.database import get_session
 from app.db.models import User, SessionStatus
-from app.services.research_service import create_research_session, get_research_session
+from app.services.research_service import create_research_session, get_research_session, run_research_graph
 from datetime import datetime
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
@@ -22,8 +22,9 @@ class ResearchResponse(BaseModel):
 router = APIRouter()
 
 @router.post('/', response_model=ResearchResponse)
-async def research(research_request: ResearchRequest, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
+async def research(research_request: ResearchRequest, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
     research_response = await create_research_session(research_request.query, current_user, session)
+    background_tasks.add_task(run_research_graph, str(research_response.id))
     return research_response
 
 @router.get('/{session_id}', response_model=ResearchResponse)

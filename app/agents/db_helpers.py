@@ -1,3 +1,4 @@
+from app.core.stream import stream_manager
 from app.db.models import AgentLog, AgentStatus
 from datetime import datetime, timezone
 from fastapi import HTTPException, status
@@ -12,6 +13,10 @@ async def log_agent_start(db_session: AsyncSession, session_id: str, agent_name:
     )
     db_session.add(agent_log)
     await db_session.commit()
+    await stream_manager.push(session_id, {
+        "agent": agent_name,
+        "status": AgentStatus.RUNNING.value
+    })
     await db_session.refresh(agent_log)
     return agent_log
 
@@ -25,4 +30,9 @@ async def update_agent_log(db_session: AsyncSession, log_id, output: str, agent_
     agent_log.completed_at = datetime.now(timezone.utc)
     db_session.add(agent_log)
     await db_session.commit()
+    await stream_manager.push(str(agent_log.session_id), {
+        'agent': agent_log.agent_name,
+        'status': agent_log.status.value,
+        'output': output
+    })
     await db_session.refresh(agent_log)

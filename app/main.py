@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.auth import router as auth_router
 from app.api.routes.history import router as history_router
 from app.api.routes.research import router as research_router
+from app.api.routes.websocket import router as websocket_router
 from app.db.database import init_db
 
 @asynccontextmanager
@@ -30,6 +31,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix='/auth', tags=['auth'])
 app.include_router(history_router, prefix='/history', tags=['history'])
 app.include_router(research_router, prefix='/research', tags=['research'])
+app.include_router(websocket_router, tags=['websocket'])
 
 @app.get('/health')
 async def health_check():
