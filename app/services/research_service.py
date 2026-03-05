@@ -1,11 +1,12 @@
 from app.agents.state import ResearchState
 from app.graph.builder import build_graph
 from app.db.database import async_session
-from app.db.models import ResearchSession, SessionStatus, User
+from app.db.models import ResearchSession, SessionStatus, Source, User
 from datetime import datetime, timezone
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
+from typing import Sequence
 
 async def create_research_session(query: str, current_user: User, session: AsyncSession) -> ResearchSession:
     research_session = ResearchSession(user_id=current_user.id, query=query, status=SessionStatus.PENDING)
@@ -54,3 +55,9 @@ async def get_research_session(session_id: str, current_user: User, session: Asy
     if not research_session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Session not found')
     return research_session
+
+async def get_research_sources(session_id: str, current_user: User, session: AsyncSession) -> Sequence[Source]:
+    await get_research_session(session_id, current_user, session)
+    sources_res = await session.execute(select(Source).where(Source.session_id == session_id))
+    sources = sources_res.scalars().all()
+    return sources
