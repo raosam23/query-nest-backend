@@ -39,6 +39,7 @@ Search Agent → Summarizer Agent → Fact Checker Agent → Writer Agent
 | POST | `/auth/login` | Login and get JWT token | No |
 | POST | `/research` | Start a new research session | Yes |
 | GET | `/research/{id}` | Get a specific research session | Yes |
+| GET | `/research/{id}/sources` | Get all sources for a session | Yes |
 | GET | `/history` | Get all past research sessions | Yes |
 | DELETE | `/history/{id}` | Delete a research session | Yes |
 | WS | `/research/{id}/stream` | Stream live agent updates | Yes |
@@ -52,6 +53,7 @@ Search Agent → Summarizer Agent → Fact Checker Agent → Writer Agent
 - [x] LangGraph agent pipeline
 - [x] Agent and source logging to database
 - [x] WebSocket streaming
+- [x] Sources endpoint
 - [ ] Frontend (NextJS)
 - [ ] Dockerize
 
@@ -79,6 +81,7 @@ Connect to the WebSocket after getting a session_id from POST /research:
 ```javascript
 const ws = new WebSocket('ws://localhost:8000/research/{session_id}/stream')
 ws.onmessage = (event) => console.log(JSON.parse(event.data))
+ws.onopen = () => console.log('WebSocket connected!')
 ```
 Messages follow this format:
 ```json
