@@ -1,5 +1,7 @@
+from app.agents.db_helpers import log_agent_start, update_agent_log
 from app.agents.llm import llm
 from app.agents.state import ResearchState
+from app.db.models import AgentStatus
 
 async def summarizer_agent(state: ResearchState) -> dict:
     '''
@@ -12,8 +14,12 @@ async def summarizer_agent(state: ResearchState) -> dict:
     Input state: search_results
     Output state: key_claims
     '''
+    db_session = state['db_session']
+    session_id = state['session_id']
+    log = await log_agent_start(db_session, session_id, 'summarizer_agent')
     search_result = state['search_results']
     if not search_result:
+        await update_agent_log(db_session, log.id, f'Search results are empty', AgentStatus.FAILED)
         return {'key_claims': []}
     prompt = f'''
         You are an agent specialized in summarizing the results given by the search_agent.
@@ -21,5 +27,10 @@ async def summarizer_agent(state: ResearchState) -> dict:
         and then extract 5-6 key claims as a numbered list.
         The given search_result is: {search_result}
     '''
-    response = await llm.ainvoke(prompt)
-    return {'key_claims': [response.content]}
+    try:
+        response = await llm.ainvoke(prompt)
+        await update_agent_log(db_session, log.id, f'Extracted key claims succesfully')
+        return {'key_claims': [response.content]}
+    except Exception as exc:
+        await update_agent_log(db_session, log.id, f'Error: {exc}', AgentStatus.FAILED)
+        raise

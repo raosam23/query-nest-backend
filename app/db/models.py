@@ -35,7 +35,7 @@ class ResearchSession(SQLModel, table=True):
     status: SessionStatus = SessionStatus.PENDING
     final_report: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), index=True))
-    completed_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
     user: User = Relationship(back_populates='sessions')
     agent_logs: List['AgentLog'] = Relationship(back_populates='session')
     sources: List['Source'] = Relationship(back_populates='session')
@@ -49,7 +49,7 @@ class AgentLog(SQLModel, table=True):
     status: AgentStatus = AgentStatus.RUNNING
     output: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True)))
-    completed_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
     session: ResearchSession = Relationship(back_populates='agent_logs')
 
 class Source(SQLModel, table=True):
