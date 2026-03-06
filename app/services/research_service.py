@@ -1,3 +1,5 @@
+"""Service module for handling research logic, orchestrating graphs, and managing data."""
+
 from app.agents.state import ResearchState
 from app.graph.builder import build_graph
 from app.db.database import async_session
@@ -9,6 +11,7 @@ from sqlmodel import select
 from typing import Sequence
 
 async def create_research_session(query: str, current_user: User, session: AsyncSession) -> ResearchSession:
+    """Creates a new pending research session in the database."""
     research_session = ResearchSession(user_id=current_user.id, query=query, status=SessionStatus.PENDING)
     session.add(research_session)
     await session.commit()
@@ -16,6 +19,7 @@ async def create_research_session(query: str, current_user: User, session: Async
     return research_session
 
 async def run_research_graph(session_id: str):
+    """Runs the LangGraph research pipeline for a given session ID."""
     async with async_session() as session:
         research_session_res = await session.execute(select(ResearchSession).where(ResearchSession.id == session_id))
         research_session: ResearchSession = research_session_res.scalars().first()
@@ -50,6 +54,7 @@ async def run_research_graph(session_id: str):
     return research_session
 
 async def get_research_session(session_id: str, current_user: User, session: AsyncSession) -> ResearchSession:
+    """Retrieves the details of a specific research session."""
     research_session_res = await session.execute(select(ResearchSession).where(ResearchSession.id == session_id, ResearchSession.user_id == current_user.id))
     research_session = research_session_res.scalars().first()
     if not research_session:
@@ -57,6 +62,7 @@ async def get_research_session(session_id: str, current_user: User, session: Asy
     return research_session
 
 async def get_research_sources(session_id: str, current_user: User, session: AsyncSession) -> Sequence[Source]:
+    """Retrieves the external sources gathered for a specific research session."""
     await get_research_session(session_id, current_user, session)
     sources_res = await session.execute(select(Source).where(Source.session_id == session_id))
     sources = sources_res.scalars().all()

@@ -1,3 +1,5 @@
+"""API dependencies such as authentication and database session retrieval."""
+
 from app.db.database import get_session
 from app.db.models import User
 from app.core.security import decode_access_token
@@ -9,6 +11,7 @@ from sqlmodel import select
 security = HTTPBearer()
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), session: AsyncSession = Depends(get_session)) -> User:
+    """Validates the JWT token and returns the current authenticated user."""
     token = credentials.credentials
     user_id = decode_access_token(token)
     if not user_id:

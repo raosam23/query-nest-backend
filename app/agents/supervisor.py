@@ -1,7 +1,14 @@
+"""
+Supervisor module.
+
+Contains the supervisor node config and routing functions to coordinate the research pipeline.
+"""
+
 from app.agents.state import ResearchState
 
+
 def supervisor(state: ResearchState) -> dict:
-    '''
+    """
     Supervisor Node
 
     Acts as the orchestrator of the research pipeline.
@@ -16,20 +23,21 @@ def supervisor(state: ResearchState) -> dict:
 
     Input State: full state
     Output State: next (routing decision)
-    '''
-    if not state['search_results']:
-        return {'next': 'search'}
-    if not state['key_claims']:
-        return {'next': 'summarize'}
-    if not state['fact_check_report']:
-        return {'next': 'fact_check'}
-    if not state['final_report']:
-        return {'next': 'write'}
-    return {'next': 'end'}
+    """
+    if not state["search_results"]:
+        return {"next": "search"}
+    if not state["key_claims"]:
+        return {"next": "summarize"}
+    if not state["fact_check_report"]:
+        return {"next": "fact_check"}
+    if not state["final_report"]:
+        return {"next": "write"}
+    return {"next": "end"}
+
 
 def route(state: ResearchState):
-    '''
+    """
     Route function for LangGraph conditional edges.
     Returns the next node name from state for LangGraph to navigate to.
-    '''
-    return state['next']
+    """
+    return state["next"]

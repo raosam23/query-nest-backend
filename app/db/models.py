@@ -1,3 +1,5 @@
+"""SQLModel database models for the application."""
+
 import uuid
 from enum import Enum
 from datetime import datetime, timezone
@@ -7,17 +9,20 @@ from sqlalchemy import Column, DateTime
 
 
 class SessionStatus(str, Enum):
+    """Execution status for a research session."""
     PENDING = 'pending'
     RUNNING = 'running'
     DONE = 'done'
     FAILED = 'failed'
 
 class AgentStatus(str, Enum):
+    """Execution status for an individual agent log."""
     RUNNING = 'running'
     DONE = 'done'
     FAILED = 'failed'
 
 class User(SQLModel, table=True):
+    """User account model."""
     __tablename__ = 'user'
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -27,6 +32,7 @@ class User(SQLModel, table=True):
     sessions: List['ResearchSession'] = Relationship(back_populates='user')
 
 class ResearchSession(SQLModel, table=True):
+    """Stores a user's research query and its results."""
     __tablename__ = 'research_session'
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -41,6 +47,7 @@ class ResearchSession(SQLModel, table=True):
     sources: List['Source'] = Relationship(back_populates='session')
 
 class AgentLog(SQLModel, table=True):
+    """Logs the output and status of internal agents during a session."""
     __tablename__ = 'agent_log'
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -53,6 +60,7 @@ class AgentLog(SQLModel, table=True):
     session: ResearchSession = Relationship(back_populates='agent_logs')
 
 class Source(SQLModel, table=True):
+    """External sources gathered during research."""
     __tablename__ = 'source'
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

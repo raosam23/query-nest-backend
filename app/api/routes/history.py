@@ -1,3 +1,5 @@
+"""API routes for managing users' research history."""
+
 from app.api.dependencies import get_current_user
 from app.api.routes.research import ResearchResponse
 from app.db.database import get_session
@@ -9,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
 class DeleteResponse(BaseModel):
+    """Model for session deletion response."""
     status: int = Field(description='HTTP status of the delete research session')
     msg: str = Field(description='The message of the HTTPException')
 
@@ -16,10 +19,12 @@ router = APIRouter()
 
 @router.get('/', response_model=List[ResearchResponse])
 async def get_research_response(current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
+    """Retrieves all past research sessions for the current user."""
     all_sessions = await get_all_sessions(current_user, session)
     return all_sessions
 
 @router.delete('/{session_id}', response_model=DeleteResponse)
 async def delete_research_session(session_id: str, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
+    """Deletes a specific research session for the current user."""
     delete_session_res = await delete_session(session_id, current_user, session)
     return delete_session_res

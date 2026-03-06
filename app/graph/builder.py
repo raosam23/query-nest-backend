@@ -1,3 +1,5 @@
+"""Module for building the research workflow graph."""
+
 from app.agents.fact_checker import fact_checker_agent
 from app.agents.search_agent import search_agent
 from app.agents.state import ResearchState
@@ -8,6 +10,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 def build_graph() -> CompiledStateGraph:
+    """Constructs and compiles the StateGraph for the research agents."""
     state = StateGraph(ResearchState)
 
     state.add_node('supervisor', supervisor)

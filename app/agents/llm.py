@@ -1,4 +1,9 @@
-from app.core.config import settings
+"""
+Creates an instance of ChatOpenAI with gpt-4o-mini model and temperature 0.0
+"""
+
 from langchain_openai import ChatOpenAI
 
-llm = ChatOpenAI(model='gpt-4o-mini', api_key=settings.OPENAI_API_KEY)
+from app.core.config import settings
+
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0, api_key=lambda: settings.OPENAI_API_KEY)

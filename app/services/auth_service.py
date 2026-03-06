@@ -1,3 +1,5 @@
+"""Service module for user authentication and registration."""
+
 from app.db.models import User
 from app.core.security import create_access_token, hash_password, verify_password
 from fastapi import HTTPException, status
@@ -6,6 +8,7 @@ from sqlmodel import select
 
 
 async def register_user(email:str, password:str, session: AsyncSession) -> User:
+    """Registers a new user given an email and password."""
     result = await session.execute(select(User).where(User.email == email))
     if result.scalars().first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email is already registered')
@@ -17,6 +20,7 @@ async def register_user(email:str, password:str, session: AsyncSession) -> User:
     return new_user
     
 async def login_user(email:str, password:str, session: AsyncSession) -> str:
+    """Authenticates a user and generates a JWT access token."""
     result = await session.execute(select(User).where(User.email == email))
     user = result.scalars().first()
     if not user:
