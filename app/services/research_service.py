@@ -1,6 +1,7 @@
 """Service module for handling research logic, orchestrating graphs, and managing data."""
 
 from app.agents.state import ResearchState
+from app.core.stream import stream_manager
 from app.graph.builder import build_graph
 from app.db.database import async_session
 from app.db.models import ResearchSession, SessionStatus, Source, User
@@ -50,6 +51,9 @@ async def run_research_graph(session_id: str):
         finally:
             session.add(research_session)
             await session.commit()
+            await stream_manager.push(session_id, {
+                "type": "pipeline_completed"
+            })
             await session.refresh(research_session)
     return research_session
 

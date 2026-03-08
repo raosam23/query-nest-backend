@@ -30,10 +30,7 @@ async def research_stream(session_id: str, websocket: WebSocket):
         while True:
             message = await queue.get()
             await websocket.send_json(message)
-            if (message.get("status") == "failed") or (
-                message.get("agent") == "writer_agent"
-                and message.get("status") == "done"
-            ):
+            if message.get('type') == 'pipeline_completed' or message.get('statu') == 'failed':
                 break
     except WebSocketDisconnect:
         pass
