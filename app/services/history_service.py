@@ -21,4 +21,4 @@ async def delete_session(session_id: str, current_user: User, session:AsyncSessi
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Session not found')
     await session.delete(research_sessions)
     await session.commit()
-    return {'status': status.HTTP_200_OK, 'msg': 'sessions deleted succesfully'}
+    return {'status': status.HTTP_200_OK, 'msg': 'Session deleted successfully'}

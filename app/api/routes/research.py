@@ -13,7 +13,7 @@ from typing import List, Optional
 
 class ResearchRequest(BaseModel):
     """Request model for starting a research session."""
-    query: str = Field(description='The query given by the user that has to be forwarded to the agent')
+    query: str = Field(description='The query given by the user that has to be forwarded to the agent', min_length=1)
 
 class ResearchResponse(BaseModel):
     """Response model representing a research session."""
