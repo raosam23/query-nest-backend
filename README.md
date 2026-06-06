@@ -2,8 +2,6 @@
 
 A multi-agent AI research assistant that autonomously searches the web, summarizes findings, fact-checks results, and compiles a structured report — all from a single query.
 
-> ⚠️ **Work in Progress** — This project is actively being developed.
-
 ## What it does
 
 You give it a question like _"What is the current state of nuclear fusion?"_ and it:
