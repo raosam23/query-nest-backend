@@ -76,6 +76,7 @@ alembic/versions/*.pyc
 # =========================
 .coverage
 .coverage.*
+coverage.xml
 .cache
 .pytest_cache/
 .ruff_cache/

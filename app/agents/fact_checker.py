@@ -25,9 +25,7 @@ async def fact_checker_agent(state: ResearchState) -> dict:
     log = await log_agent_start(db_session, session_id, "fact_checker_agent")
     key_claims = state["key_claims"]
     if not key_claims:
-        await update_agent_log(
-            db_session, log.id, "No claims to check", AgentStatus.FAILED
-        )
+        await update_agent_log(db_session, log.id, "No claims to check", AgentStatus.FAILED)
         return {"fact_check_report": {"report": "no claims to check"}}
     prompt = f"""
         You are a fact cheker agent, that is gonna take the key_claims given by the key claims agent

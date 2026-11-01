@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.12"
+  DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test"
+  JWT_SECRET: "test-secret-key-for-ci-only"
+  JWT_ALGORITHM: "HS256"
+  JWT_EXPIRE_MINUTES: "60"
+  OPENAI_API_KEY: "sk-test-key-not-used-in-tests"
+  TAVILY_API_KEY: "tvly-test-key-not-used-in-tests"
+  LANGCHAIN_TRACING_V2: "false"
+  LANGSMITH_TRACING: "false"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run ruff check
+        run: uv run ruff check . --exclude alembic/ --select=E,F --ignore=E501,F821
+
+      - name: Run ruff format check
+        run: uv run ruff format --check . --exclude alembic/
+        continue-on-error: true
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run pyright
+        run: uv run pyright
+        continue-on-error: true
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run tests with coverage
+        run: |
+          uv run pytest tests/ \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=99 \
+            -v

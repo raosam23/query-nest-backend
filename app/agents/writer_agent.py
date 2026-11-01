@@ -46,9 +46,7 @@ async def writer_agent(state: ResearchState) -> dict:
     try:
         response = await llm.ainvoke(prompt)
         if not response:
-            await update_agent_log(
-                db_session, log.id, "Failed to generate report", AgentStatus.FAILED
-            )
+            await update_agent_log(db_session, log.id, "Failed to generate report", AgentStatus.FAILED)
             return {"final_report": "Failed to generate report"}
         await update_agent_log(
             db_session,

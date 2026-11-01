@@ -13,9 +13,7 @@ from app.core.stream import stream_manager
 from app.db.models import AgentLog, AgentStatus
 
 
-async def log_agent_start(
-    db_session: AsyncSession, session_id: str, agent_name: str
-) -> AgentLog:
+async def log_agent_start(db_session: AsyncSession, session_id: str, agent_name: str) -> AgentLog:
     """
     log_agent_start function, that creates an entry in the AgentLog and pushes the status and the agent name to the websocket aswell
 
@@ -34,9 +32,7 @@ async def log_agent_start(
     )
     db_session.add(agent_log)
     await db_session.commit()
-    await stream_manager.push(
-        session_id, {"agent": agent_name, "status": AgentStatus.RUNNING.value}
-    )
+    await stream_manager.push(session_id, {"agent": agent_name, "status": AgentStatus.RUNNING.value})
     await db_session.refresh(agent_log)
     return agent_log
 
@@ -59,14 +55,10 @@ async def update_agent_log(
     Raises:
         HTTPException: If no AgentLog entry exists with the provided `log_id`.
     """
-    agent_log_res = await db_session.execute(
-        select(AgentLog).where(AgentLog.id == log_id)
-    )
+    agent_log_res = await db_session.execute(select(AgentLog).where(AgentLog.id == log_id))
     agent_log = agent_log_res.scalars().first()
     if not agent_log:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Agent Log not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent Log not found")
     agent_log.status = agent_status
     agent_log.output = output
     agent_log.completed_at = datetime.now(timezone.utc)
