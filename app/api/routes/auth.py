@@ -35,18 +35,14 @@ router = APIRouter()
 
 
 @router.post("/register", response_model=RegisterResponse)
-async def register(
-    auth_request: AuthRequest, session: AsyncSession = Depends(get_session)
-):
+async def register(auth_request: AuthRequest, session: AsyncSession = Depends(get_session)):
     """Register a new user account."""
     user = await register_user(auth_request.email, auth_request.password, session)
     return RegisterResponse(message="Account created successfully", email=user.email)
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(
-    auth_request: AuthRequest, session: AsyncSession = Depends(get_session)
-):
+async def login(auth_request: AuthRequest, session: AsyncSession = Depends(get_session)):
     """Authenticate a user and return an access token."""
     auth_token = await login_user(auth_request.email, auth_request.password, session)
     return LoginResponse(access_token=auth_token, token_type="bearer")

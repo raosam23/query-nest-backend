@@ -27,9 +27,7 @@ async def summarizer_agent(state: ResearchState) -> dict:
     log = await log_agent_start(db_session, session_id, "summarizer_agent")
     search_result = state["search_results"]
     if not search_result:
-        await update_agent_log(
-            db_session, log.id, "Search results are empty", AgentStatus.FAILED
-        )
+        await update_agent_log(db_session, log.id, "Search results are empty", AgentStatus.FAILED)
         return {"key_claims": []}
     prompt = f"""
         You are an agent specialized in summarizing the results given by the search_agent.
