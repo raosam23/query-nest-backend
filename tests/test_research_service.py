@@ -37,6 +37,8 @@ async def test_create_research_session_stores_a_pending_row() -> None:
     assert created.user_id == user.id
     assert created.query == "What is nuclear fusion?"
     assert created.status == SessionStatus.PENDING
+    assert stream_manager.get_queue(str(created.id)) is not None
+    stream_manager.remove_queue(str(created.id))
     session.add.assert_called_once_with(created)
     session.commit.assert_awaited()
     session.refresh.assert_awaited_once_with(created)
@@ -72,7 +74,7 @@ async def test_run_research_graph_saves_the_report(monkeypatch: pytest.MonkeyPat
     assert research.status == SessionStatus.DONE
     assert research.final_report == "A structured report"
     assert research.completed_at is not None
-    assert message == {"type": "pipeline_completed"}
+    assert message == {"type": "pipeline_completed", "status": "done"}
     assert db.commit.await_count >= 2
 
 
@@ -98,13 +100,71 @@ async def test_run_research_graph_marks_the_session_failed(
     assert saved.status == SessionStatus.FAILED
     assert saved.final_report is None
     assert saved.completed_at is not None
-    assert message == {"type": "pipeline_completed"}
+    assert message == {"type": "pipeline_completed", "status": "failed", "error": "graph exploded"}
     output = capsys.readouterr().out
-    assert "Research pipeline failed graph exploded" in output
+    assert "Research pipeline failed: graph exploded" in output
 
 
 @pytest.mark.asyncio
-async def test_run_research_graph_raises_when_the_session_row_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_run_research_graph_reports_explicit_graph_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    research = make_research_session()
+    db = make_async_session()
+    db.execute.return_value = scalar_result(research)
+    monkeypatch.setattr("app.services.research_service.async_session", _session_factory(db))
+    graph = MagicMock()
+    graph.ainvoke = AsyncMock(return_value={"final_report": "No sources found", "error": "no sources"})
+    monkeypatch.setattr("app.services.research_service.build_graph", lambda: graph)
+    session_id = str(research.id)
+    stream_manager.create_queue(session_id)
+    try:
+        saved = await run_research_graph(session_id)
+        message = stream_manager.get_queue(session_id).get_nowait()
+    finally:
+        stream_manager.remove_queue(session_id)
+
+    assert saved.status == SessionStatus.FAILED
+    assert saved.final_report == "No sources found"
+    assert message == {
+        "type": "pipeline_completed",
+        "status": "failed",
+        "error": "No sources found",
+    }
+
+
+@pytest.mark.asyncio
+async def test_run_research_graph_still_streams_when_failure_persistence_raises(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    research = make_research_session()
+    db = make_async_session()
+    db.execute.return_value = scalar_result(research)
+    persist_db = make_async_session()
+    persist_db.commit.side_effect = RuntimeError("database unavailable")
+    sessions = iter((db, persist_db))
+    monkeypatch.setattr("app.services.research_service.async_session", lambda: _session_factory(next(sessions))())
+    graph = MagicMock()
+    graph.ainvoke = AsyncMock(side_effect=RuntimeError("graph exploded"))
+    monkeypatch.setattr("app.services.research_service.build_graph", lambda: graph)
+    session_id = str(research.id)
+    stream_manager.create_queue(session_id)
+    try:
+        await run_research_graph(session_id)
+        message = stream_manager.get_queue(session_id).get_nowait()
+    finally:
+        stream_manager.remove_queue(session_id)
+
+    assert message == {
+        "type": "pipeline_completed",
+        "status": "failed",
+        "error": "graph exploded",
+    }
+    assert "Could not persist failed research status: database unavailable" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_run_research_graph_publishes_failure_when_the_session_row_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     db = make_async_session()
     db.execute.return_value = scalar_result(None)
     monkeypatch.setattr("app.services.research_service.async_session", _session_factory(db))
@@ -112,9 +172,19 @@ async def test_run_research_graph_raises_when_the_session_row_is_missing(monkeyp
     graph.ainvoke = AsyncMock()
     monkeypatch.setattr("app.services.research_service.build_graph", lambda: graph)
 
-    with pytest.raises(AttributeError):
-        await run_research_graph("missing-session")
+    stream_manager.create_queue("missing-session")
+    try:
+        result = await run_research_graph("missing-session")
+        message = stream_manager.get_queue("missing-session").get_nowait()
+    finally:
+        stream_manager.remove_queue("missing-session")
 
+    assert result is None
+    assert message == {
+        "type": "pipeline_completed",
+        "status": "failed",
+        "error": "session not found",
+    }
     graph.ainvoke.assert_not_awaited()
 
 

@@ -24,10 +24,14 @@ def supervisor(state: ResearchState) -> dict:
     Input State: full state
     Output State: next (routing decision)
     """
-    if not state["search_results"]:
+    if not state["search_results"] and state.get("search_attempts", 0) < 2:
         return {"next": "search"}
-    if not state["key_claims"]:
+    if not state["search_results"]:
+        return {"next": "end", "final_report": "No sources found for this query after retrying the search."}
+    if not state["key_claims"] and state.get("summarizer_attempts", 0) < 2:
         return {"next": "summarize"}
+    if not state["key_claims"]:
+        return {"next": "end", "final_report": "Unable to extract key claims from the search results after retrying."}
     if not state["fact_check_report"]:
         return {"next": "fact_check"}
     if not state["final_report"]:

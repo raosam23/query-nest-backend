@@ -79,6 +79,8 @@ def make_state(**overrides: Any) -> dict[str, Any]:
         "next": "",
         "session_id": str(uuid.uuid4()),
         "db_session": make_async_session(),
+        "search_attempts": 0,
+        "summarizer_attempts": 0,
     }
     state.update(overrides)
     return state

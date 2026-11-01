@@ -4,8 +4,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
-from langgraph.errors import GraphRecursionError
-
 from app.graph.builder import build_graph
 from tests.factories import make_state
 
@@ -69,11 +67,14 @@ async def test_graph_runs_search_then_summary_then_fact_check_then_writer(
 
 
 @pytest.mark.asyncio
-async def test_graph_keeps_routing_to_search_when_results_stay_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_graph_retries_empty_search_once_then_finishes(monkeypatch: pytest.MonkeyPatch) -> None:
     async def empty_search(state: dict[str, Any]) -> dict[str, Any]:
-        return {"search_results": []}
+        return {"search_results": [], "search_attempts": state["search_attempts"] + 1}
 
     _patch_agents(monkeypatch, search_agent=empty_search)
 
-    with pytest.raises(GraphRecursionError):
-        await build_graph().ainvoke(make_state(), config={"recursion_limit": 4})
+    result = await build_graph().ainvoke(make_state())
+
+    assert result["search_attempts"] == 2
+    assert result["next"] == "end"
+    assert "No sources found" in result["final_report"]

@@ -33,6 +33,7 @@ async def search_agent(state: ResearchState) -> dict:
     session_id = state["session_id"]
     log = await log_agent_start(db_session, session_id, "search_agent")
     user_query = state["query"]
+    attempts = state.get("search_attempts", 0) + 1
     if not user_query:
         await update_agent_log(
             db_session,
@@ -40,7 +41,7 @@ async def search_agent(state: ResearchState) -> dict:
             "User Query not found in the database",
             AgentStatus.FAILED,
         )
-        return {"search_results": []}
+        return {"search_results": [], "search_attempts": attempts}
     try:
         results = await search_tool.ainvoke({"query": user_query})
         if isinstance(results, str):
@@ -55,6 +56,9 @@ async def search_agent(state: ResearchState) -> dict:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=f"Search agent failed: {results}",
             )
+        if not results:
+            await update_agent_log(db_session, log.id, "Search returned no results", AgentStatus.FAILED)
+            return {"search_results": [], "search_attempts": attempts}
         for result in results:
             source = Source(
                 session_id=uuid.UUID(session_id),
@@ -98,7 +102,7 @@ async def search_agent(state: ResearchState) -> dict:
             db_session.add(source)
         await db_session.commit()
         await update_agent_log(db_session, log.id, f"Found {len(results)} results")
-        return {"search_results": results}
+        return {"search_results": results, "search_attempts": attempts}
     except HTTPException:
         # We are already handling it above
         raise

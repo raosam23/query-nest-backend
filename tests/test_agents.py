@@ -56,7 +56,7 @@ async def test_search_agent_fails_when_the_query_is_empty(monkeypatch: pytest.Mo
 
     result = await run_search(state)
 
-    assert result == {"search_results": []}
+    assert result == {"search_results": [], "search_attempts": 1}
     assert update.await_args.args[2] == "User Query not found in the database"
     assert update.await_args.args[3] == AgentStatus.FAILED
 
@@ -92,7 +92,7 @@ async def test_search_agent_scores_sources_and_stores_them(monkeypatch: pytest.M
 
     returned = await run_search(state)
 
-    assert returned == {"search_results": results}
+    assert returned == {"search_results": results, "search_attempts": 1}
     sources = [call.args[0] for call in state["db_session"].add.call_args_list]
     assert all(isinstance(source, Source) for source in sources)
     assert sources[0].url == "https://www.iaea.org/fusion"
@@ -116,8 +116,9 @@ async def test_search_agent_accepts_an_empty_result_list(monkeypatch: pytest.Mon
 
     result = await run_search(state)
 
-    assert result == {"search_results": []}
-    assert update.await_args.args[2] == "Found 0 results"
+    assert result == {"search_results": [], "search_attempts": 1}
+    assert update.await_args.args[2] == "Search returned no results"
+    assert update.await_args.args[3] == AgentStatus.FAILED
     state["db_session"].add.assert_not_called()
 
 
@@ -141,7 +142,7 @@ async def test_summarizer_fails_when_there_are_no_results(monkeypatch: pytest.Mo
 
     result = await run_summarizer(make_state(search_results=[]))
 
-    assert result == {"key_claims": []}
+    assert result == {"key_claims": [], "summarizer_attempts": 1}
     assert update.await_args.args[2] == "Search results are empty"
     assert update.await_args.args[3] == AgentStatus.FAILED
 
@@ -154,9 +155,23 @@ async def test_summarizer_returns_the_model_text_as_one_claim(monkeypatch: pytes
 
     result = await run_summarizer(state)
 
-    assert result == {"key_claims": ["1. Fusion is experimental."]}
+    assert result == {"key_claims": ["1. Fusion is experimental."], "summarizer_attempts": 1}
     assert "brief" in summarizer_agent.llm.ainvoke.await_args.args[0]
     assert update.await_args.args[2] == "Extracted key claims succesfully"
+
+
+@pytest.mark.asyncio
+async def test_summarizer_rejects_blank_claims_and_marks_the_agent_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    update = _patch_logs(monkeypatch, summarizer_agent, "summarizer_agent")
+    _patch_llm(monkeypatch, summarizer_agent, AsyncMock(return_value=LLMResponse("  \n")))
+
+    result = await run_summarizer(make_state(search_results=[{"title": "IAEA"}]))
+
+    assert result == {"key_claims": [], "summarizer_attempts": 1}
+    assert update.await_args.args[2] == "Summarizer returned no key claims"
+    assert update.await_args.args[3] == AgentStatus.FAILED
 
 
 @pytest.mark.asyncio

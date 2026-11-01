@@ -18,43 +18,74 @@ async def create_research_session(query: str, current_user: User, session: Async
     session.add(research_session)
     await session.commit()
     await session.refresh(research_session)
+    stream_manager.create_queue(str(research_session.id))
     return research_session
 
 
 async def run_research_graph(session_id: str):
     """Runs the LangGraph research pipeline for a given session ID."""
-    async with async_session() as session:
-        research_session_res = await session.execute(select(ResearchSession).where(ResearchSession.id == session_id))
-        research_session: ResearchSession = research_session_res.scalars().first()
-        graph = build_graph()
-        init_state: ResearchState = {
-            "query": research_session.query,
-            "search_results": [],
-            "key_claims": [],
-            "fact_check_report": {},
-            "final_report": "",
-            "next": "",
-            "session_id": str(research_session.id),
-            "db_session": session,
-        }
-        research_session.status = SessionStatus.RUNNING
-        session.add(research_session)
-        await session.commit()
-        await session.refresh(research_session)
-        try:
-            graph_result = await graph.ainvoke(init_state)
-            research_session.status = SessionStatus.DONE
-            research_session.final_report = graph_result.get("final_report")
-            research_session.completed_at = datetime.now(timezone.utc)
-        except Exception as exc:
-            research_session.status = SessionStatus.FAILED
-            research_session.completed_at = datetime.now(timezone.utc)
-            print(f"Research pipeline failed {exc}")
-        finally:
+    research_session = None
+    completion = {"type": "pipeline_completed", "status": SessionStatus.FAILED.value}
+    try:
+        async with async_session() as session:
+            research_session_res = await session.execute(
+                select(ResearchSession).where(ResearchSession.id == session_id)
+            )
+            research_session = research_session_res.scalars().first()
+            if research_session is None:
+                completion["error"] = "session not found"
+                print(f"Research session not found: {session_id}")
+                return None
+
+            graph = build_graph()
+            init_state: ResearchState = {
+                "query": research_session.query,
+                "search_results": [],
+                "key_claims": [],
+                "fact_check_report": {},
+                "final_report": "",
+                "next": "",
+                "session_id": str(research_session.id),
+                "db_session": session,
+                "search_attempts": 0,
+                "summarizer_attempts": 0,
+            }
+            research_session.status = SessionStatus.RUNNING
             session.add(research_session)
             await session.commit()
-            await stream_manager.push(session_id, {"type": "pipeline_completed"})
             await session.refresh(research_session)
+            graph_result = await graph.ainvoke(init_state)
+            report = graph_result.get("final_report") or ""
+            failed = bool(graph_result.get("error"))
+            research_session.status = SessionStatus.FAILED if failed else SessionStatus.DONE
+            research_session.final_report = graph_result.get("final_report")
+            research_session.completed_at = datetime.now(timezone.utc)
+            session.add(research_session)
+            await session.commit()
+            await session.refresh(research_session)
+            completion = {
+                "type": "pipeline_completed",
+                "status": research_session.status.value,
+            }
+            if failed:
+                completion["error"] = report[:300] or "research pipeline failed"
+    except Exception as exc:
+        completion["error"] = str(exc)[:300] or "research pipeline failed"
+        print(f"Research pipeline failed: {exc}")
+        if research_session is not None:
+            research_session.status = SessionStatus.FAILED
+            research_session.completed_at = datetime.now(timezone.utc)
+            try:
+                async with async_session() as session:
+                    session.add(research_session)
+                    await session.commit()
+            except Exception as persist_exc:
+                print(f"Could not persist failed research status: {persist_exc}")
+    finally:
+        try:
+            await stream_manager.push(session_id, completion)
+        except Exception as stream_exc:
+            print(f"Could not publish research completion: {stream_exc}")
     return research_session
 
 

@@ -28,7 +28,7 @@ The Next.js client lives in [raosam23/query-nest-frontend](https://github.com/ra
 - A rule-based supervisor routes between four agents: search, summarize, fact-check, and write. The supervisor is Python, not another model call.
 - Web search through Tavily (five results). Each result is saved as a `source` row. `gpt-4o-mini` scores credibility from 0.0 to 1.0.
 - Agent start and finish rows in `agent_log`, plus a live WebSocket message for each.
-- The writer’s text is stored on the session as `final_report` when the graph finishes. A failed run sets status `failed` and still notifies the socket.
+- The writer’s text or a clear empty-result outcome is stored as `final_report`. A failed setup or graph run sets status `failed` and still notifies the socket.
 - List and delete the current user’s past sessions.
 - A Docker image and a Compose stack (in the infra repo) that includes PostgreSQL 16.
 
@@ -43,6 +43,7 @@ flowchart TD
     task --> running[status running]
     running --> supervisor[Supervisor]
     supervisor -->|no search results| search[Search agent]
+    search -->|empty after one retry| noSources[No sources found report]
     search --> tavily[Tavily, 5 results]
     search --> score[gpt-4o-mini credibility score]
     search --> sources[(source rows)]
@@ -54,6 +55,7 @@ flowchart TD
     supervisor -->|no final report| writer[Writer]
     writer --> supervisor
     supervisor -->|state is full| done[status done, final_report saved]
+    noSources --> done
     search --> queue[WebSocket queue]
     summarize --> queue
     fact --> queue
@@ -65,7 +67,7 @@ flowchart TD
 
 | Node | Reads | Writes | What it calls |
 | --- | --- | --- | --- |
-| Supervisor | `search_results`, `key_claims`, `fact_check_report`, `final_report` | `next` | Nothing. First empty field wins: `search`, `summarize`, `fact_check`, `write`, or `end` |
+| Supervisor | `search_results`, `key_claims`, `fact_check_report`, `final_report`, retry counters | `next` | Nothing. Retries empty search and summarizer output once, then ends with a clear report |
 | Search | `query` | `search_results`, `source` rows | Tavily, then one chat completion per result |
 | Summarizer | `search_results` | `key_claims` (one string, the model text) | `gpt-4o-mini` |
 | Fact checker | `key_claims` | `fact_check_report` (`{"report": <model text>}`) | `gpt-4o-mini` |
@@ -77,7 +79,7 @@ The chat model is constructed at import in `app/agents/llm.py`: `gpt-4o-mini`, t
 
 ### Request and socket
 
-The WebSocket does not check the JWT. Connect to `/research/{session_id}/stream` after `POST /research/` returns, while the background task is still running. The server creates the queue when the socket is accepted. `stream_manager.push` drops the message when that queue does not exist yet, so a client that connects after the run has finished does not receive the earlier events.
+Connect to `/research/{session_id}/stream` after `POST /research/` returns. Pass the JWT from `/auth/login` as a `token` query parameter. The server validates the token and checks that the session belongs to its owner. Invalid tokens and sessions are closed with code `1008` before any events are streamed.
 
 ```mermaid
 sequenceDiagram
@@ -90,18 +92,19 @@ sequenceDiagram
     API->>DB: Insert pending research_session
     API-->>Client: 200 session id, status pending
     API->>Graph: Background task ainvoke
-    Client->>API: WebSocket /research/{id}/stream
-    API->>API: Create the session queue
+    Client->>API: WebSocket /research/{id}/stream?token=JWT
+    API->>DB: Verify session owner
+    API->>API: Attach to the session queue
     Graph->>DB: status running, agent_log and source rows
     Graph-->>Client: agent status messages
     Graph->>DB: status done and final_report, or status failed
     Graph-->>Client: type pipeline_completed
-    API->>API: Close the socket and delete the queue
+    API->>API: Close the socket and delete the completed queue
 ```
 
-The handler only sends. It does not read client frames. It closes after a message whose `type` is `pipeline_completed`, or whose key `statu` equals `failed`. An agent message with `status: failed` does not close the socket. `pipeline_completed` is pushed on both the success path and the exception path, so a failed run still ends the stream. The payload is only `{"type": "pipeline_completed"}`. The error text is printed on the server and the session row is `failed`.
+Queues are created with the research session and also lazily on the first event. Reconnecting preserves queued messages. An idle queue with no connected client expires after five minutes. The handler closes only after `pipeline_completed`; an individual agent failure does not stop the rest of the stream. The completion message includes `status` and, on failure, a short `error`.
 
-If Tavily returns no results, the supervisor still sees an empty `search_results` list and routes to search again. LangGraph’s default recursion limit is 25. Hitting it raises, `run_research_graph` marks the session `failed`, and the socket still gets `pipeline_completed`.
+If Tavily returns no results, the supervisor retries search once and then completes with `final_report: "No sources found for this query after retrying the search."`. If summarization returns no claims, it also retries once before completing with a clear report. Both empty-result cases mark the agent log as failed.
 
 ## Tech stack
 
@@ -228,7 +231,7 @@ There is no minimum password length. Both login failures use the detail `Invalid
 | `GET` | `/research/{session_id}` | Yes | One session owned by the caller. `404` with `Session not found` otherwise |
 | `GET` | `/research/{session_id}/sources` | Yes | Sources saved for that session. `404` when the session is missing or owned by someone else |
 
-A session payload is `{id, query, status, final_report, created_at}`. `status` is `pending`, `running`, `done`, or `failed`. `final_report` is null until the writer finishes. A source payload is `{id, url, title, snippet, credibility_score}`. `snippet` is the Tavily `content` field. `credibility_score` is null when the model reply is not a float.
+A session payload is `{id, query, status, final_report, created_at}`. `status` is `pending`, `running`, `done`, or `failed`. `final_report` is null until the writer finishes or an empty-result outcome is available. A source payload is `{id, url, title, snippet, credibility_score}`. `snippet` is the Tavily `content` field. `credibility_score` is null when the model reply is not a float.
 
 ### History — `/history`
 
@@ -240,7 +243,10 @@ A session payload is `{id, query, status, final_report, created_at}`. `status` i
 ### WebSocket — `/research/{session_id}/stream`
 
 ```javascript
-const ws = new WebSocket("ws://localhost:8000/research/{session_id}/stream");
+const token = "<access_token from /auth/login>";
+const ws = new WebSocket(
+  `ws://localhost:8000/research/{session_id}/stream?token=${encodeURIComponent(token)}`
+);
 ws.onmessage = (event) => console.log(JSON.parse(event.data));
 ```
 
@@ -248,7 +254,8 @@ ws.onmessage = (event) => console.log(JSON.parse(event.data));
 | --- | --- |
 | `{"agent": "search_agent", "status": "running"}` | That agent’s log row was inserted. The same shape is used for `summarizer_agent`, `fact_checker_agent`, and `writer_agent` |
 | `{"agent": "<name>", "status": "done", "output": "<text>"}` | The agent finished. `status` is `failed` when the agent recorded an error |
-| `{"type": "pipeline_completed"}` | The background task finished, including when the graph raised |
+| `{"type": "pipeline_completed", "status": "done"}` | The background task finished successfully |
+| `{"type": "pipeline_completed", "status": "failed", "error": "..."}` | Setup or graph execution failed |
 
 Search outputs look like `Found 5 results`. The summarizer output is `Extracted key claims succesfully`. The fact checker output includes the claim count. The writer output includes the report length. Failures store `Error: ...` or a fixed message such as `Search results are empty`.
 
@@ -275,14 +282,14 @@ uv run pyright
 | `tests/test_stream.py` | Queue create, push, missing session, and remove |
 | `tests/test_db_helpers.py` | Agent log insert, done, failed, and missing row |
 | `tests/test_agents.py` | Search, credibility parsing, summarizer, fact checker, writer, and supervisor routing |
-| `tests/test_graph.py` | Compiled edges, one full mocked run, and the empty-search recursion limit |
+| `tests/test_graph.py` | Compiled edges, one full mocked run, and bounded retry after empty search |
 | `tests/test_auth_service.py` | Register, duplicate email, login, wrong password |
 | `tests/test_history_service.py` | List order and delete |
-| `tests/test_research_service.py` | Create, successful graph, failed graph, missing row, sources |
+| `tests/test_research_service.py` | Create, successful graph, failed graph, missing row completion event, sources |
 | `tests/test_auth_routes.py` | Register and login HTTP responses |
 | `tests/test_research_routes.py` | Start, fetch, sources, blank query |
 | `tests/test_history_routes.py` | List and delete |
-| `tests/test_websocket.py` | Stream framing, the `statu` close check, disconnect, and a live socket |
+| `tests/test_websocket.py` | JWT and session ownership, stream framing, disconnect, and a live socket |
 | `tests/test_main.py` | `GET /health`, CORS, docs, and startup `init_db` |
 
 Mocking:

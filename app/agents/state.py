@@ -22,3 +22,5 @@ class ResearchState(TypedDict):
     next: str
     session_id: str
     db_session: AsyncSession
+    search_attempts: int
+    summarizer_attempts: int
