@@ -1,12 +1,13 @@
 """Research session lifecycle and the background graph run."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
 
 from app.core.stream import stream_manager
-from app.db.models import SessionStatus, Source
+from app.db.models import ResearchSession, SessionStatus, Source
 from app.services.research_service import (
     create_research_session,
     get_research_session,
@@ -25,6 +26,39 @@ def _session_factory(db: AsyncMock) -> MagicMock:
             return False
 
     return MagicMock(return_value=_CM())
+
+
+async def _empty_search(state: dict[str, Any]) -> dict[str, Any]:
+    return {"search_results": [], "search_attempts": state["search_attempts"] + 1}
+
+
+async def _search_with_one_source(state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "search_results": [{"title": "source", "url": "https://example.com", "content": "text"}],
+        "search_attempts": state["search_attempts"] + 1,
+    }
+
+
+async def _empty_summary(state: dict[str, Any]) -> dict[str, Any]:
+    return {"key_claims": [], "summarizer_attempts": state["summarizer_attempts"] + 1}
+
+
+async def _run_real_graph(monkeypatch: pytest.MonkeyPatch) -> tuple[ResearchSession, dict[str, str]]:
+    research = make_research_session()
+    db = make_async_session()
+    db.execute.return_value = scalar_result(research)
+    monkeypatch.setattr("app.services.research_service.async_session", _session_factory(db))
+    session_id = str(research.id)
+    stream_manager.create_queue(session_id)
+    try:
+        saved = await run_research_graph(session_id)
+        queue = stream_manager.get_queue(session_id)
+        assert queue is not None
+        message = queue.get_nowait()
+    finally:
+        stream_manager.remove_queue(session_id)
+    assert saved is not None
+    return saved, message
 
 
 @pytest.mark.asyncio
@@ -103,6 +137,39 @@ async def test_run_research_graph_marks_the_session_failed(
     assert message == {"type": "pipeline_completed", "status": "failed", "error": "graph exploded"}
     output = capsys.readouterr().out
     assert "Research pipeline failed: graph exploded" in output
+
+
+@pytest.mark.asyncio
+async def test_empty_search_give_up_fails_the_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.graph.builder.search_agent", _empty_search)
+
+    saved, message = await _run_real_graph(monkeypatch)
+
+    assert saved.status == SessionStatus.FAILED
+    assert saved.final_report == "No sources found for this query after retrying the search."
+    assert saved.completed_at is not None
+    assert message == {
+        "type": "pipeline_completed",
+        "status": "failed",
+        "error": "No sources found for this query after retrying the search.",
+    }
+
+
+@pytest.mark.asyncio
+async def test_empty_summary_give_up_fails_the_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.graph.builder.search_agent", _search_with_one_source)
+    monkeypatch.setattr("app.graph.builder.summarizer_agent", _empty_summary)
+
+    saved, message = await _run_real_graph(monkeypatch)
+
+    assert saved.status == SessionStatus.FAILED
+    assert saved.final_report == "Unable to extract key claims from the search results after retrying."
+    assert saved.completed_at is not None
+    assert message == {
+        "type": "pipeline_completed",
+        "status": "failed",
+        "error": "Unable to extract key claims from the search results after retrying.",
+    }
 
 
 @pytest.mark.asyncio

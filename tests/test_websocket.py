@@ -122,6 +122,23 @@ async def test_stream_closes_when_the_client_disconnects_without_dropping_queue(
 
 
 @pytest.mark.asyncio
+async def test_other_users_session_is_closed_with_policy_violation(monkeypatch: pytest.MonkeyPatch) -> None:
+    websocket = _websocket()
+    session_id = str(uuid.uuid4())
+    websocket.query_params = {"token": "valid-token"}
+    monkeypatch.setattr(websocket_route, "decode_access_token", lambda token: str(uuid.uuid4()))
+    row = ResearchSession(id=uuid.UUID(session_id), user_id=uuid.uuid4(), query="question")
+    monkeypatch.setattr(websocket_route, "async_session", lambda: _SessionContext(row))
+
+    await websocket_route.research_stream(session_id, websocket)
+
+    websocket.accept.assert_awaited_once()
+    websocket.close.assert_awaited_once()
+    assert websocket.close.await_args.kwargs["code"] == 1008
+    websocket.send_json.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_invalid_token_is_closed_with_policy_violation(monkeypatch: pytest.MonkeyPatch) -> None:
     websocket = _websocket()
     websocket.query_params = {}

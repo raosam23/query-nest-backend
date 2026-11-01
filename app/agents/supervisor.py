@@ -6,6 +6,10 @@ Contains the supervisor node config and routing functions to coordinate the rese
 
 from app.agents.state import ResearchState
 
+NO_SOURCES_REPORT = "No sources found for this query after retrying the search."
+NO_CLAIMS_REPORT = "Unable to extract key claims from the search results after retrying."
+GIVE_UP_REPORTS = frozenset({NO_SOURCES_REPORT, NO_CLAIMS_REPORT})
+
 
 def supervisor(state: ResearchState) -> dict:
     """
@@ -15,8 +19,8 @@ def supervisor(state: ResearchState) -> dict:
     Reads the current state and decides which agent should run next
     based on what data is missing.
 
-    - No search_result -> route to search agent
-    - No key_claims -> route to summarizer agent
+    - No search_result -> route to search agent, then end after one retry
+    - No key_claims -> route to summarizer agent, then end after one retry
     - No fact_check_report -> route to fact_checker agent
     - No final_report -> route to writer agent
     - Everything done -> end of the graph
@@ -27,11 +31,11 @@ def supervisor(state: ResearchState) -> dict:
     if not state["search_results"] and state.get("search_attempts", 0) < 2:
         return {"next": "search"}
     if not state["search_results"]:
-        return {"next": "end", "final_report": "No sources found for this query after retrying the search."}
+        return {"next": "end", "final_report": NO_SOURCES_REPORT}
     if not state["key_claims"] and state.get("summarizer_attempts", 0) < 2:
         return {"next": "summarize"}
     if not state["key_claims"]:
-        return {"next": "end", "final_report": "Unable to extract key claims from the search results after retrying."}
+        return {"next": "end", "final_report": NO_CLAIMS_REPORT}
     if not state["fact_check_report"]:
         return {"next": "fact_check"}
     if not state["final_report"]:

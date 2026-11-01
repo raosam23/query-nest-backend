@@ -28,7 +28,7 @@ The Next.js client lives in [raosam23/query-nest-frontend](https://github.com/ra
 - A rule-based supervisor routes between four agents: search, summarize, fact-check, and write. The supervisor is Python, not another model call.
 - Web search through Tavily (five results). Each result is saved as a `source` row. `gpt-4o-mini` scores credibility from 0.0 to 1.0.
 - Agent start and finish rows in `agent_log`, plus a live WebSocket message for each.
-- The writer’s text or a clear empty-result outcome is stored as `final_report`. A failed setup or graph run sets status `failed` and still notifies the socket.
+- The writer’s text is stored as `final_report` and the session is marked `done`. If search or summarization gives up after its retry, that explanation is stored as `final_report`, the session is marked `failed`, and the socket gets a short `error`. A failed setup or graph run also sets status `failed` and still notifies the socket.
 - List and delete the current user’s past sessions.
 - A Docker image and a Compose stack (in the infra repo) that includes PostgreSQL 16.
 
@@ -49,25 +49,27 @@ flowchart TD
     search --> sources[(source rows)]
     search --> supervisor
     supervisor -->|no key claims| summarize[Summarizer]
+    summarize -->|no claims after one retry| noClaims[No key claims report]
     summarize --> supervisor
     supervisor -->|no fact-check report| fact[Fact checker]
     fact --> supervisor
     supervisor -->|no final report| writer[Writer]
     writer --> supervisor
     supervisor -->|state is full| done[status done, final_report saved]
-    noSources --> done
     search --> queue[WebSocket queue]
     summarize --> queue
     fact --> queue
     writer --> queue
     done --> completed[type pipeline_completed]
-    failed[graph raises] --> markFailed[status failed]
+    noSources --> markFailed[status failed]
+    noClaims --> markFailed
+    failed[graph raises] --> markFailed
     markFailed --> completed
 ```
 
 | Node | Reads | Writes | What it calls |
 | --- | --- | --- | --- |
-| Supervisor | `search_results`, `key_claims`, `fact_check_report`, `final_report`, retry counters | `next` | Nothing. Retries empty search and summarizer output once, then ends with a clear report |
+| Supervisor | `search_results`, `key_claims`, `fact_check_report`, `final_report`, retry counters | `next` | Nothing. Retries empty search and summarizer output once, then ends with a clear report that the service stores as a failed run |
 | Search | `query` | `search_results`, `source` rows | Tavily, then one chat completion per result |
 | Summarizer | `search_results` | `key_claims` (one string, the model text) | `gpt-4o-mini` |
 | Fact checker | `key_claims` | `fact_check_report` (`{"report": <model text>}`) | `gpt-4o-mini` |
@@ -97,14 +99,14 @@ sequenceDiagram
     API->>API: Attach to the session queue
     Graph->>DB: status running, agent_log and source rows
     Graph-->>Client: agent status messages
-    Graph->>DB: status done and final_report, or status failed
+    Graph->>DB: status done with the writer report, or status failed with a give-up report or an error
     Graph-->>Client: type pipeline_completed
     API->>API: Close the socket and delete the completed queue
 ```
 
 Queues are created with the research session and also lazily on the first event. Reconnecting preserves queued messages. An idle queue with no connected client expires after five minutes. The handler closes only after `pipeline_completed`; an individual agent failure does not stop the rest of the stream. The completion message includes `status` and, on failure, a short `error`.
 
-If Tavily returns no results, the supervisor retries search once and then completes with `final_report: "No sources found for this query after retrying the search."`. If summarization returns no claims, it also retries once before completing with a clear report. Both empty-result cases mark the agent log as failed.
+If Tavily returns no results, the supervisor retries search once and then ends with `final_report` set to `No sources found for this query after retrying the search.` The session status is `failed`, and `pipeline_completed` carries `status: "failed"` plus that sentence as `error`. If summarization returns no claims, it also retries once, then fails the same way with `Unable to extract key claims from the search results after retrying.` Both empty-result cases mark the agent log as failed. A finished writer report is the path that sets status `done`.
 
 ## Tech stack
 
@@ -231,7 +233,7 @@ There is no minimum password length. Both login failures use the detail `Invalid
 | `GET` | `/research/{session_id}` | Yes | One session owned by the caller. `404` with `Session not found` otherwise |
 | `GET` | `/research/{session_id}/sources` | Yes | Sources saved for that session. `404` when the session is missing or owned by someone else |
 
-A session payload is `{id, query, status, final_report, created_at}`. `status` is `pending`, `running`, `done`, or `failed`. `final_report` is null until the writer finishes or an empty-result outcome is available. A source payload is `{id, url, title, snippet, credibility_score}`. `snippet` is the Tavily `content` field. `credibility_score` is null when the model reply is not a float.
+A session payload is `{id, query, status, final_report, created_at}`. `status` is `pending`, `running`, `done`, or `failed`. `final_report` is null until the writer finishes or a give-up explanation is stored. Search and summarizer give-ups keep that explanation and use status `failed`. A source payload is `{id, url, title, snippet, credibility_score}`. `snippet` is the Tavily `content` field. `credibility_score` is null when the model reply is not a float.
 
 ### History — `/history`
 
@@ -254,8 +256,8 @@ ws.onmessage = (event) => console.log(JSON.parse(event.data));
 | --- | --- |
 | `{"agent": "search_agent", "status": "running"}` | That agent’s log row was inserted. The same shape is used for `summarizer_agent`, `fact_checker_agent`, and `writer_agent` |
 | `{"agent": "<name>", "status": "done", "output": "<text>"}` | The agent finished. `status` is `failed` when the agent recorded an error |
-| `{"type": "pipeline_completed", "status": "done"}` | The background task finished successfully |
-| `{"type": "pipeline_completed", "status": "failed", "error": "..."}` | Setup or graph execution failed |
+| `{"type": "pipeline_completed", "status": "done"}` | The writer finished and the session is `done` |
+| `{"type": "pipeline_completed", "status": "failed", "error": "..."}` | Setup failed, the graph raised, or search/summarization gave up after its retry. `error` is a short message: the give-up sentence, or the exception text |
 
 Search outputs look like `Found 5 results`. The summarizer output is `Extracted key claims succesfully`. The fact checker output includes the claim count. The writer output includes the report length. Failures store `Error: ...` or a fixed message such as `Search results are empty`.
 
@@ -285,11 +287,11 @@ uv run pyright
 | `tests/test_graph.py` | Compiled edges, one full mocked run, and bounded retry after empty search |
 | `tests/test_auth_service.py` | Register, duplicate email, login, wrong password |
 | `tests/test_history_service.py` | List order and delete |
-| `tests/test_research_service.py` | Create, successful graph, failed graph, missing row completion event, sources |
+| `tests/test_research_service.py` | Create, successful graph, raised graph, search and summarizer give-ups marked failed, missing row completion event, sources |
 | `tests/test_auth_routes.py` | Register and login HTTP responses |
 | `tests/test_research_routes.py` | Start, fetch, sources, blank query |
 | `tests/test_history_routes.py` | List and delete |
-| `tests/test_websocket.py` | JWT and session ownership, stream framing, disconnect, and a live socket |
+| `tests/test_websocket.py` | JWT, session ownership including another user’s session, stream framing, disconnect, and a live socket |
 | `tests/test_main.py` | `GET /health`, CORS, docs, and startup `init_db` |
 
 Mocking:
