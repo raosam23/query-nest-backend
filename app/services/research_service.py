@@ -1,6 +1,7 @@
 """Service module for handling research logic, orchestrating graphs, and managing data."""
 
 from app.agents.state import ResearchState
+from app.agents.supervisor import GIVE_UP_REPORTS
 from app.core.stream import stream_manager
 from app.graph.builder import build_graph
 from app.db.database import async_session
@@ -56,7 +57,8 @@ async def run_research_graph(session_id: str):
             await session.refresh(research_session)
             graph_result = await graph.ainvoke(init_state)
             report = graph_result.get("final_report") or ""
-            failed = bool(graph_result.get("error"))
+            # Give-up reports end the graph without an error key. They are still failures.
+            failed = bool(graph_result.get("error")) or report in GIVE_UP_REPORTS
             research_session.status = SessionStatus.FAILED if failed else SessionStatus.DONE
             research_session.final_report = graph_result.get("final_report")
             research_session.completed_at = datetime.now(timezone.utc)
